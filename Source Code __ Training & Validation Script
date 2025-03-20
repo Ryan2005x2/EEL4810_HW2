@@ -1,0 +1,329 @@
+# This is the Source Code, also known as the Training and Validation Script, that Trains and Validates the model with base configurations:
+# Base Configurations: 
+           # Normalization = Enabled
+           #	Mini-Batch Size = 32
+           #	Learning Rate = 5e-4 (0.0005)
+           #	Optimizer = Adam
+           #	No weight initialization
+           #	No L2 Regularization (Weight Decay)
+
+# Written by Ryan Andersen
+# 20 March 2025
+
+# Start of Program:
+
+import os # Provides functions for interacting with the operating system
+import glob # Used to search for files that match a specific file pattern or name (Global)
+import pandas as pd # Useful for data manipulation and analysis
+import numpy as np # Useful for efficient numerical computation
+import torch # Deep-learning framework
+from torch.utils.data import TensorDataset, Dataset, DataLoader, random_split
+# Dataset: Class representing dataset and DataLoader: Iterable that wraps Dataset and
+# provides features like batching, shuffling, and parallel data loading using mult. workers.
+from sklearn.preprocessing import StandardScaler # Transforms data to have a mean of 0 and st. dev. of 1
+import torch.nn as nn # Used to train and build the layers of neural network, such as input, hidden, and output
+import matplotlib.pyplot as plt # Plotting library for visualizing losses and accuracies
+from tqdm import tqdm # Progress bar utility to show training/validation progress
+import torch.optim as optim # Contains optimization algorithms like Adam, SGD
+
+class model_architecture(nn.Module):
+    
+    def __init__(self, input_size, hidden_size, output_size):
+        super().__init__()
+        
+        self.model = nn.Sequential(
+            nn.Linear(input_size, hidden_size), # Input Layer, Layer 1
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size), # Hidden Layer, Layer 2
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size), # Hidden Layer, Layer 3
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size), # Hidden Layer, Layer 4
+            nn.ReLU(),
+            nn.Linear(hidden_size, output_size) # Output Layer, Layer 5
+        )
+        
+        
+    def forward(self, x):
+        
+        # Define how input tensor x flows through the model
+        return self.model(x) # Pass input through the 5-layer model
+    
+def load_dataset(folders):
+    
+    # Loads CSV files from the given folder paths, extracts input features (columns 2-4) 
+    # and labels (column 5), and standardizes the input data.
+    
+    print("Loading Dataset...")
+
+    # List to store data:
+    all_inputs = []
+    all_outputs = []
+
+    # Iterate through folder and load Excel CSV files:
+    for folder in folders: # for each value (folder) in the list (folders)
+        for file_path in glob.glob(os.path.join(folder, "*.csv")):
+            data_file = pd.read_csv(file_path, engine="python") # Load CSV file and use engine to handle different CSV formats
+            
+            inputs =  data_file.iloc[:, 1:4].values # Extract columns 2, 3, and 4 as inputs
+            labels = data_file.iloc[:, 4].values  # Extract column 5 as labels
+            
+            # Replace "#" with "3", leave other labels unchanged
+            labels = np.where(labels == "#", "3", labels)  # Replace "#" with "3"
+            labels = labels.astype(np.int64)  # Convert to integers
+            
+            all_inputs.append(inputs) # Add inputs to all_data list
+            all_outputs.append(labels) # Add labels to all_labels list
+            
+    # Convert list to numpy array:
+    full_inputs = np.vstack(all_inputs)
+    full_labels = np.hstack(all_outputs)
+
+    # Normalize input features
+    scaler = StandardScaler()
+    full_inputs = scaler.fit_transform(full_inputs)
+
+    # Convert to PyTorch tensors
+    full_inputs = torch.tensor(full_inputs, dtype=torch.float32)
+    full_labels = torch.tensor(full_labels, dtype=torch.long)  # Classification labels
+
+    print(f"Dataset Loading Completed! Total samples: {full_inputs.shape[0]}")
+    
+    return full_inputs, full_labels
+        
+def dataset_splitting(full_inputs, full_labels):
+    
+    # Function to split the full dataset into training and validation sets
+    print("Splitting dataset into training, validation, and testing sets...") # Announce splitting start
+    
+    full_dataset = TensorDataset(full_inputs, full_labels)  # Combine inputs and labels into a dataset
+    
+    # Calculate sizes: 90% for training (of which 80% for training and 20% for val.), 10% for testing
+    train_size = int(0.9 * 0.8 * len(full_dataset)) # Integer number of training samples
+    val_size = int(0.9 * 0.2 * len(full_dataset)) # Integer number of validation samples
+    test_size = len(full_dataset) - (train_size + val_size) # Remaining samples for validation
+    # Split the dataset randomly into training and validation subsets
+    train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size])
+    
+    # Print the sizes of the resulting datasets for verification
+    print(f"Training dataset size: {len(train_dataset)}")
+    print(f"Validation dataset size: {len(val_dataset)}")
+    print(f"Testing dataset size: {len(test_dataset)}")
+    print("Dataset splitting complete!") # Confirm splitting is finished
+    
+    return train_dataset, val_dataset, test_dataset # Return the three datasets
+
+def dataset_dataloader(train_dataset, val_dataset):
+    
+    # Function to create DataLoader objects for batching and shuffling
+    print("Creating data loaders...") # Announce DataLoader creation start
+    # Create DataLoader for training set with shuffling for better generalization
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=0)
+    print("Data loaders creation complete!") # Confirm DataLoader creation is done
+    
+    return train_loader, val_loader # Return DataLoaders
+
+def initialize_model():
+    
+    # Function to create and initialize the 5-layer model
+    print("Initializing model...") # Announce model initialization
+    
+    input_size = 3  # Number of input features
+    hidden_size = 64  # Adjustable based on desired performance
+    output_size = 4  # Number of output classes (0, 1, 2, 3 = '#')
+    
+    model = model_architecture(input_size, hidden_size, output_size)
+    print("Model initialization complete!") # Confirm model is ready
+    
+    return model # Return the initialized model
+
+def setup_training_parameters(model):
+    
+    print("Setting up training parameters...") # Announce setup start
+    
+    num_epochs = 100 # Number of epochs to train
+    learning_rate = 5e-4 # Learning rate for the optimizer
+    criterion = nn.CrossEntropyLoss() # Loss function for classification
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate) # Adam optimizer with model parameters
+    train_accuracies = [] # List to store training accuracies
+    train_losses = [] # List to store training losses
+    val_accuracies = [] # List to store validation accuracies
+    val_losses = [] # List to store validation losses
+    
+    print("Training parameters setup complete!") # Confirm setup is done
+    
+    return num_epochs, criterion, optimizer, train_accuracies, train_losses, val_accuracies, val_losses
+
+def train_model(model, train_loader, criterion, optimizer, epoch, num_epochs, device=None):
+    
+    # Function to train the model for one epoch
+    # Set device to GPU if available, otherwise CPU
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device) # Move model to the specified device
+    
+    # Set model to training mode (enables dropout, batch norm updates)
+    model.train()
+    running_loss = 0.0 # Accumulate loss over the epoch
+    correct_train = 0 # Count correct predictions
+    total_train = 0 # Count total samples
+    
+    # Notify user that training is starting for this epoch
+    print(f"Starting training for epoch {epoch+1}/{num_epochs}...")
+    # Use tqdm to show progress bar for training batches
+    with tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}", unit="batch") as t:
+        for inputs, labels in t: # Iterate over batches
+            inputs, labels = inputs.to(device), labels.to(device) # Move data to device
+            optimizer.zero_grad() # Clear gradients from previous step
+            outputs = model(inputs) # Forward pass: compute model predictions
+            loss = criterion(outputs, labels) # Compute loss between predictions and labels
+            loss.backward() # Backward pass: compute gradients
+            optimizer.step() # Update model weights using gradients
+            running_loss += loss.item() # Add batch loss to running total
+            
+            # Calculate accuracy for this batch
+            _, preds = torch.max(outputs, 1) # Get predicted class indices
+            correct_train += torch.sum(preds == labels).item() # Count correct predictions
+            total_train += labels.size(0) # Add batch size to total samples
+            
+            # Update progress bar with current average loss
+            t.set_postfix(loss=running_loss / (t.n + 1))
+    
+    # Calculate average loss and accuracy for the epoch
+    avg_train_loss = running_loss / len(train_loader)
+    train_accuracy = correct_train / total_train
+    # Print epoch results
+    print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {avg_train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}")
+    print(f"Training for epoch {epoch+1} complete!") # Confirm training is done
+    
+    return avg_train_loss, train_accuracy # Return metrics for this epoch
+
+def validate_model(model, val_loader, criterion, epoch, num_epochs, device=None):
+    
+    # Function to validate the model for one epoch
+    # Set device to GPU if available, otherwise CPU
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device) # Move model to the specified device
+    
+    # Set model to evaluation mode (disables dropout, freezes batch norm)
+    model.eval()
+    val_loss = 0.0 # Accumulate validation loss
+    correct_val = 0 # Count correct predictions
+    total_val = 0 # Count total samples
+    
+    # Notify user that validation is starting for this epoch
+    print(f"Starting validation for epoch {epoch+1}/{num_epochs}...")
+    # Disable gradient computation for validation (saves memory and computation)
+    with torch.no_grad():
+        for inputs, labels in val_loader: # Iterate over validation batches
+            inputs, labels = inputs.to(device), labels.to(device) # Move data to device
+            outputs = model(inputs) # Forward pass: compute predictions
+            loss = criterion(outputs, labels) # Compute loss
+            val_loss += loss.item() # Add batch loss to running total
+            
+            # Calculate accuracy for this batch
+            _, preds = torch.max(outputs, 1) # Get predicted class indices
+            correct_val += torch.sum(preds == labels).item() # Count correct predictions
+            total_val += labels.size(0) # Add batch size to total samples
+    
+    # Calculate average loss and accuracy for validation
+    avg_val_loss = val_loss / len(val_loader)
+    val_accuracy = correct_val / total_val
+    # Print validation results
+    print(f"Epoch [{epoch+1}/{num_epochs}], Val Loss: {avg_val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}")
+    print(f"Validation for epoch {epoch+1} complete!") # Confirm validation is done
+    
+    return avg_val_loss, val_accuracy # Return validation metrics
+
+def plot_metrics(train_losses, val_losses, train_accuracies, val_accuracies, num_epochs):
+    
+    # Function to plot training and validation metrics
+    print("Plotting training and validation metrics...") # Announce plotting start
+    
+    # Create a figure with two subplots side by side
+    plt.figure(figsize=(12, 6)) # Set figure size to 12x6 inches
+    
+    # First subplot: Loss
+    plt.subplot(1, 2, 1) # 1 row, 2 columns, 1st subplot
+    plt.plot(range(1, num_epochs + 1), train_losses, label='Training Loss', color='blue') # Plot training loss
+    plt.plot(range(1, num_epochs + 1), val_losses, label='Validation Loss', color='red') # Plot validation loss
+    plt.xlabel('Epochs') # Label x-axis
+    plt.ylabel('Loss') # Label y-axis
+    plt.title('Training and Validation Loss') # Set title
+    plt.legend() # Add legend to distinguish lines
+    plt.xticks(range(0, num_epochs + 1, 5)) # Set x-axis ticks to integers only (e.g., [1, 2, 3])
+    
+    # Second subplot: Accuracy
+    plt.subplot(1, 2, 2) # 1 row, 2 columns, 2nd subplot
+    plt.plot(range(1, num_epochs + 1), train_accuracies, label='Training Accuracy', color='blue') # Plot training accuracy
+    plt.plot(range(1, num_epochs + 1), val_accuracies, label='Validation Accuracy', color='red') # Plot validation accuracy
+    plt.xlabel('Epochs') # Label x-axis
+    plt.ylabel('Accuracy') # Label y-axis
+    plt.title('Training and Validation Accuracy') # Set title
+    plt.legend() # Add legend to distinguish lines
+    plt.xticks(range(0, num_epochs + 1, 5)) # Set x-axis ticks to integers only (e.g., [1, 2, 3]), and the step to 10
+    
+    plt.tight_layout() # Adjust layout to prevent overlap
+    plt.show() # Display the plots
+    print("Metrics plotting complete!") # Confirm plotting is done
+    
+    return None # No return value needed
+
+def main():
+    
+    # Define folder paths:
+    folders = [
+        
+        r"C:\Users\orang\Downloads\eel4810-dataset\eel4810-dataset\sub01",
+        r"C:\Users\orang\Downloads\eel4810-dataset\eel4810-dataset\sub02",
+        r"C:\Users\orang\Downloads\eel4810-dataset\eel4810-dataset\sub03",
+        r"C:\Users\orang\Downloads\eel4810-dataset\eel4810-dataset\sub05"
+        
+    ]
+    
+    # Load and prepare dataset
+    full_inputs, full_labels = load_dataset(folders)
+    
+    train_dataset, val_dataset, test_dataset = dataset_splitting(full_inputs, full_labels)
+    
+    train_loader, val_loader = dataset_dataloader(train_dataset, val_dataset)
+    
+    # Initialize model
+    model = initialize_model()
+    
+    # Set up parameters and objects for training
+    num_epochs, criterion, optimizer, train_accuracies, train_losses, val_accuracies, val_losses = setup_training_parameters(model)
+    
+    # Start the training and loop
+    print("Starting training and validation loop...") # Announce loop start
+    
+    for epoch in range(num_epochs): # Loop over each epoch
+        # Train the model for one epoch and get metrics
+        train_loss, train_acc = train_model(model, train_loader, criterion, optimizer, epoch, num_epochs)
+        train_losses.append(train_loss) # Store training loss
+        train_accuracies.append(train_acc) # Store training accuracy
+        
+        # Validate the model for one epoch and get metrics
+        val_loss, val_acc = validate_model(model, val_loader, criterion, epoch, num_epochs)
+        val_losses.append(val_loss) # Store validation loss
+        val_accuracies.append(val_acc) # Store validation accuracy
+        
+    print("Training and validation loop complete!") # Confirm loop is done
+    
+    # Plot the collected metrics (i.e., validation and training loss and accuracy)
+    plot_metrics(train_losses, val_losses, train_accuracies, val_accuracies, num_epochs)
+    
+    # When model finalized, save weights as .pth file and test dataset as CSV file:
+    # torch.save(model.state_dict(), r"C:\Users\orang\Documents\Python Files\EEL4810_HW2_trained_model.pth")
+    # print("Model saved successfully.")
+        
+    # Finish the script
+    print("Script execution complete!")
+
+if __name__ == "__main__":
+    # Entry point of the script: run main() if this file is executed directly
+    main()
+
+# End of Program.        
