@@ -1,1 +1,113 @@
+# This is a program to load the Testing Dataset and run it through the trained model from
+# the EEL_4810_Train_and_Val_Script.py program
+
+# Written by Ryan Andersen
+# 23 March 2025
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# Define class labels for the dataset
+class_labels = ['0', '1', '2', '#']
+
+class model_architecture(nn.Module):
+    
+    def __init__(self, input_size, hidden_size, output_size):
+        
+        super().__init__()
+        
+        self.model = nn.Sequential(
+            nn.Linear(input_size, hidden_size),  # Input Layer, Layer 1
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),  # Hidden Layer, Layer 2
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),  # Hidden Layer, Layer 3
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),  # Hidden Layer, Layer 4
+            nn.ReLU(),
+            nn.Linear(hidden_size, output_size)   # Output Layer, Layer 5
+        )
+        
+    def forward(self, x):
+        
+        return self.model(x)  # Forward pass through the network
+
+def preprocess_dataset(dataset):
+    
+    # Extract inputs and labels from the TensorDataset within the Subset
+    inputs, labels = dataset.dataset.tensors  # Access the underlying TensorDataset
+    indices = dataset.indices  # Get the indices of the Subset
+    test_inputs = inputs[indices]  # Select the test subset inputs
+    test_labels = labels[indices]  # Select the test subset labels
+    
+    return test_inputs, test_labels
+
+def load_saved_model(model_path):
+    
+    # Load the trained model with matching architecture
+    model = model_architecture(input_size=3, hidden_size=64, output_size=4)  # Match training script
+    model.load_state_dict(torch.load(model_path, weights_only=True))  # Load weights only
+    model.eval()  # Set the model to evaluation mode
+    
+    return model
+
+def display_prediction(model, inputs, labels):
+    
+    # Predict classes for the input data and compare with true labels
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    inputs = inputs.to(device)
+    labels = labels.to(device)
+    
+    with torch.no_grad():  # Disable gradient calculation for inference
+        outputs = model(inputs)  # Batch prediction
+        probabilities = F.softmax(outputs, dim=1)  # Apply softmax to get probabilities
+        predicted_indices = torch.argmax(probabilities, dim=1)  # Get predicted class indices
+    
+    # Calculate accuracy
+    correct = (predicted_indices == labels).sum().item()
+    total = labels.size(0)
+    accuracy = correct / total
+    
+    # Print results
+    print(f"Predicted class indices: {predicted_indices.tolist()}")
+    print(f"True class indices: {labels.tolist()}")
+    print(f"Accuracy on test set: {accuracy:.4f}")
+    
+    # Display a sample prediction (first sample)
+    sample_pred_class = class_labels[predicted_indices[0].item()]
+    sample_prob = probabilities[0, predicted_indices[0]].item()
+    print(f"\nSample Prediction (first sample):")
+    print(f"Predicted Class: {sample_pred_class}")
+    print(f"Probability: {sample_prob*100:.2f}%")
+    
+    return accuracy
+
+def main():
+    
+    model_path = r"C:\Users\orang\Documents\Python Files\EEL4810_HW2_trained_model.pth"
+    
+    dataset_path = r"C:\Users\orang\Documents\Python Files\EEL4810_HW2_testing_dataset.pth"
+
+    # Load the dataset (Subset object)
+    dataset = torch.load(dataset_path, weights_only=False)  # Load full object
+    print("Data Loaded Successfully!")
+    
+    # Preprocess the dataset
+    test_inputs, test_labels = preprocess_dataset(dataset)
+    print("Data Preprocessed Successfully!")
+    
+    # Load the trained model
+    model = load_saved_model(model_path)
+    print("Saved Model Loaded Successfully!")
+    
+    # Display predictions and accuracy
+    accuracy = display_prediction(model, test_inputs, test_labels)
+    print(f"\033[31m\nTest Set Accuracy: {accuracy*100:.2f}%\n\033[0m")
+    
+    print("Script Execution Complete!")
+
+if __name__ == "__main__":
+    main()
 
