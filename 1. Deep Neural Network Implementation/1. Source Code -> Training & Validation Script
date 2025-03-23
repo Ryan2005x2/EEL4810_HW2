@@ -1,11 +1,11 @@
 # This is the Source Code, also known as the Training and Validation Script, that Trains and Validates the model with base configurations:
 # Base Configurations: 
-           #          Normalization = Enabled
-           #	Mini-Batch Size = 32
-           #	Learning Rate = 5e-4 (0.0005)
-           #	Optimizer = Adam
-           #	No weight initialization
-           #	No L2 Regularization (Weight Decay)
+           #  Normalization = Enabled
+           #  Mini-Batch Size = 32
+           #  Learning Rate = 5e-4 (0.0005)
+           #  Optimizer = Adam
+           #  No weight initialization
+           #  No L2 Regularization (Weight Decay)
 
 # Written by Ryan Andersen
 # 20 March 2025
