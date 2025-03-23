@@ -1,6 +1,6 @@
 # This is the Source Code, also known as the Training and Validation Script, that Trains and Validates the model with base configurations:
 # Base Configurations: 
-           # Normalization = Enabled
+           #          Normalization = Enabled
            #	Mini-Batch Size = 32
            #	Learning Rate = 5e-4 (0.0005)
            #	Optimizer = Adam
